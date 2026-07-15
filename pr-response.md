@@ -208,6 +208,8 @@ f38b2bc refactor: rename save_to_watchlist to add_to_watchlist
 9b7d283 feat: add watchlist model, service, and endpoints
 ```
 
+![alt text](<Screenshot 2026-07-14 201916.png>)
+
 7 feature commits, all Conventional Commits, one logical change each, linear
 history, no merge commits. (This response doc is added on top as a separate
 `docs:` commit, so `git log` shows 8 commits total.)
