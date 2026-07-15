@@ -102,3 +102,68 @@ def test_add_to_watchlist_nonexistent_film_raises(app, sample_user):
 
         with pytest.raises(FilmNotFoundError):
             add_to_watchlist(user_id=sample_user, film_id=fake_film_id)
+
+
+# ── get_watchlist sort order ─────────────────────────────────────────────────
+
+def test_get_watchlist_returns_newest_first(app, sample_user):
+    """
+    get_watchlist() should return films sorted by date_added descending
+    (most recently added first), matching get_collection's convention
+    (PR review comment 5).
+    """
+    with app.app_context():
+        from datetime import datetime, timezone, timedelta
+
+        film_a = Film(title="Alien", year=1979, genre="Horror")
+        film_b = Film(title="Blade Runner", year=1982, genre="Sci-Fi")
+        db.session.add_all([film_a, film_b])
+        db.session.commit()
+
+        earlier = datetime.now(timezone.utc) - timedelta(days=5)
+        later = datetime.now(timezone.utc)
+
+        entry_a = WatchlistEntry(user_id=sample_user, film_id=film_a.id, date_added=earlier)
+        entry_b = WatchlistEntry(user_id=sample_user, film_id=film_b.id, date_added=later)
+        db.session.add_all([entry_a, entry_b])
+        db.session.commit()
+
+        watchlist = get_watchlist(sample_user)
+        titles = [f["title"] for f in watchlist]
+
+        # Blade Runner was added later, so it should come first.
+        assert titles[0] == "Blade Runner"
+        assert titles[1] == "Alien"
+
+
+def test_get_watchlist_tie_break_is_deterministic(app, sample_user):
+    """
+    Entries sharing the same date_added must sort deterministically. The
+    service uses id ascending as a tie-breaker so the order is stable rather
+    than relying on insertion/row order.
+    """
+    with app.app_context():
+        from datetime import datetime, timezone
+
+        film_a = Film(title="Arrival", year=2016)
+        film_b = Film(title="Sicario", year=2015)
+        db.session.add_all([film_a, film_b])
+        db.session.commit()
+
+        same_time = datetime.now(timezone.utc)
+        # Explicit ids so the tie-break order is predictable in the assertion.
+        entry_hi = WatchlistEntry(
+            id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            user_id=sample_user, film_id=film_a.id, date_added=same_time,
+        )
+        entry_lo = WatchlistEntry(
+            id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            user_id=sample_user, film_id=film_b.id, date_added=same_time,
+        )
+        db.session.add_all([entry_hi, entry_lo])
+        db.session.commit()
+
+        titles = [f["title"] for f in get_watchlist(sample_user)]
+
+        # Same date_added → lower id (Sicario's "aaaa…") comes first.
+        assert titles == ["Sicario", "Arrival"]
